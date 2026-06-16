@@ -1,6 +1,6 @@
 // React 主组件 - Navicat 风格界面
 import React, { useState } from 'react';
-import { Layout, Space, Button, Typography, Tabs } from 'antd';
+import { Layout, Space, Button, Typography, Tabs, Drawer } from 'antd';
 import {
   Database,
   FileText,
@@ -12,25 +12,30 @@ import {
   Shield,
   Network,
   BarChart3,
+  Download,
+  Info,
 } from 'lucide-react';
 import NavigatorTree from './components/NavigatorTree';
 import SQLEditor from './components/SQLEditor';
 import DataGrid from './components/DataGrid';
 import ConnectionDialog from './components/ConnectionDialog';
 import TableProperties from './components/TableProperties';
+import ExportDialog from './components/ExportDialog';
+import QueryHistoryPanel from './components/QueryHistoryPanel';
+import DatabaseInfoPanel from './components/DatabaseInfoPanel';
 import './App.css';
 
 const { Header, Sider, Content } = Layout;
 const { Title } = Typography;
-const { TabPane } = Tabs;
 
-type TabType = 'welcome' | 'table' | 'sql';
+type TabType = 'welcome' | 'table' | 'sql' | 'dbinfo';
 
 interface TabItem {
   key: string;
   title: string;
   type: TabType;
   tableName?: string;
+  databaseName?: string;
 }
 
 function App() {
@@ -39,7 +44,10 @@ function App() {
   ]);
   const [activeKey, setActiveKey] = useState('welcome');
   const [connectionDialogVisible, setConnectionDialogVisible] = useState(false);
+  const [exportDialogVisible, setExportDialogVisible] = useState(false);
+  const [queryHistoryVisible, setQueryHistoryVisible] = useState(false);
   const [selectedTable, setSelectedTable] = useState<string | undefined>(undefined);
+  const [currentDatabase, setCurrentDatabase] = useState('sakila');
 
   const handleNewConnection = () => {
     setConnectionDialogVisible(true);
@@ -59,6 +67,23 @@ function App() {
     };
     setTabs([...tabs, newTab]);
     setActiveKey(newKey);
+  };
+
+  const handleShowDatabaseInfo = () => {
+    const existingTab = tabs.find(t => t.type === 'dbinfo');
+    if (existingTab) {
+      setActiveKey(existingTab.key);
+    } else {
+      const newKey = 'dbinfo';
+      const newTab: TabItem = {
+        key: newKey,
+        title: '数据库信息',
+        type: 'dbinfo',
+        databaseName: currentDatabase,
+      };
+      setTabs([...tabs, newTab]);
+      setActiveKey(newKey);
+    }
   };
 
   const handleSelectTable = (tableName: string) => {
@@ -108,12 +133,19 @@ function App() {
     // TODO: 调用后端执行
   };
 
+  const handleExport = (config: any) => {
+    console.log('导出配置:', config);
+    // TODO: 调用后端导出
+  };
+
   const renderTabContent = (tab: TabItem) => {
     switch (tab.type) {
       case 'table':
         return <DataGrid tableName={tab.tableName} />;
       case 'sql':
         return <SQLEditor onExecute={handleExecuteSQL} />;
+      case 'dbinfo':
+        return <DatabaseInfoPanel databaseName={tab.databaseName} />;
       default:
         return (
           <div style={{ textAlign: 'center', paddingTop: 100 }}>
@@ -122,6 +154,17 @@ function App() {
               欢迎使用 DBeaver Navicat Edition
             </Title>
             <p style={{ color: '#999' }}>开始创建数据库连接或打开表</p>
+            <Space style={{ marginTop: 24 }}>
+              <Button type="primary" icon={<Database size={16} />} onClick={handleNewConnection}>
+                新建连接
+              </Button>
+              <Button icon={<FileText size={16} />} onClick={handleNewQuery}>
+                新建查询
+              </Button>
+              <Button icon={<Info size={16} />} onClick={handleShowDatabaseInfo}>
+                数据库信息
+              </Button>
+            </Space>
           </div>
         );
     }
@@ -160,6 +203,7 @@ function App() {
           <Button
             type="text"
             style={{ height: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center' }}
+            onClick={handleShowDatabaseInfo}
           >
             <Table2 size={48} color="#2196F3" strokeWidth={1.5} />
             <span style={{ marginTop: 8, fontSize: 13 }}>表</span>
@@ -192,6 +236,7 @@ function App() {
           <Button
             type="text"
             style={{ height: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center' }}
+            onClick={() => setQueryHistoryVisible(true)}
           >
             <History size={48} color="#FF5722" strokeWidth={1.5} />
             <span style={{ marginTop: 8, fontSize: 13 }}>查询</span>
@@ -200,6 +245,7 @@ function App() {
           <Button
             type="text"
             style={{ height: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center' }}
+            onClick={() => setExportDialogVisible(true)}
           >
             <Shield size={48} color="#757575" strokeWidth={1.5} />
             <span style={{ marginTop: 8, fontSize: 13 }}>备份</span>
@@ -263,6 +309,26 @@ function App() {
         onClose={() => setConnectionDialogVisible(false)}
         onSave={handleSaveConnection}
       />
+
+      {/* 导出对话框 */}
+      <ExportDialog
+        visible={exportDialogVisible}
+        tableName={selectedTable}
+        rowCount={100}
+        onClose={() => setExportDialogVisible(false)}
+        onExport={handleExport}
+      />
+
+      {/* 查询历史抽屉 */}
+      <Drawer
+        title="查询历史"
+        placement="right"
+        width={500}
+        open={queryHistoryVisible}
+        onClose={() => setQueryHistoryVisible(false)}
+      >
+        <QueryHistoryPanel onExecuteSQL={handleExecuteSQL} />
+      </Drawer>
     </Layout>
   );
 }
