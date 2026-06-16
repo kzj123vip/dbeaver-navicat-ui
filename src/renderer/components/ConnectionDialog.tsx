@@ -1,9 +1,10 @@
 // 新建连接对话框 - 分步向导
 import React, { useState } from 'react';
 import { Modal, Steps, Form, Input, Select, Button, Space, message, Radio, InputNumber } from 'antd';
-import { Database, Server, Key, CheckCircle } from 'lucide-react';
+import { Database, Server, CheckCircle } from 'lucide-react';
+import { useConnections } from '../hooks/useConnections';
+import type { ConnectionConfig as ApiConnectionConfig } from '../services/api';
 
-const { Step } = Steps;
 const { Option } = Select;
 
 interface ConnectionDialogProps {
@@ -23,21 +24,46 @@ interface ConnectionConfig {
 }
 
 const CONNECTION_TYPES = [
-  { value: 'mysql', label: 'MySQL', icon: '🐬', defaultPort: 3306, color: '#00758F' },
-  { value: 'postgresql', label: 'PostgreSQL', icon: '🐘', defaultPort: 5432, color: '#336791' },
-  { value: 'redis', label: 'Redis', icon: '🔴', defaultPort: 6379, color: '#DC382D' },
-  { value: 'mongodb', label: 'MongoDB', icon: '🍃', defaultPort: 27017, color: '#47A248' },
-  { value: 'sqlite', label: 'SQLite', icon: '📦', defaultPort: 0, color: '#003B57' },
-  { value: 'oracle', label: 'Oracle', icon: '🔴', defaultPort: 1521, color: '#F80000' },
-  { value: 'sqlserver', label: 'SQL Server', icon: '🪟', defaultPort: 1433, color: '#CC2927' },
-  { value: 'mariadb', label: 'MariaDB', icon: '🦭', defaultPort: 3306, color: '#003545' },
+  { value: 'mysql', label: 'MySQL', icon: '🐬', defaultPort: 3306, color: '#00758F', driver: 'mysql:mysql8' },
+  { value: 'postgresql', label: 'PostgreSQL', icon: '🐘', defaultPort: 5432, color: '#336791', driver: 'postgresql:postgres-jdbc' },
+  { value: 'redis', label: 'Redis', icon: '🔴', defaultPort: 6379, color: '#DC382D', driver: 'redis:jedis' },
+  { value: 'mongodb', label: 'MongoDB', icon: '🍃', defaultPort: 27017, color: '#47A248', driver: 'mongodb:mongodb' },
+  { value: 'sqlite', label: 'SQLite', icon: '📦', defaultPort: 0, color: '#003B57', driver: 'sqlite:sqlite_jdbc' },
+  { value: 'oracle', label: 'Oracle', icon: '🔴', defaultPort: 1521, color: '#F80000', driver: 'oracle:oracle_thin' },
+  { value: 'sqlserver', label: 'SQL Server', icon: '🪟', defaultPort: 1433, color: '#CC2927', driver: 'sqlserver:microsoft' },
+  { value: 'mariadb', label: 'MariaDB', icon: '🦭', defaultPort: 3306, color: '#003545', driver: 'mysql:mariaDB' },
 ];
+
+/**
+ * 将对话框表单配置转换为 API 连接配置
+ */
+function toApiConfig(values: ConnectionConfig): ApiConnectionConfig {
+  const dbType = CONNECTION_TYPES.find((t) => t.value === values.type);
+  return {
+    name: values.name,
+    driverId: dbType?.driver || values.type,
+    host: values.host,
+    port: String(values.port), // 转换为字符串
+    databaseName: values.database || '',
+    credentials: {
+      userName: values.username,
+      userPassword: values.password,
+    },
+    providerProperties: {
+      allowPublicKeyRetrieval: 'true', // MySQL 8 必需
+      useSSL: 'false', // 本地测试可关闭
+    },
+    saveCredentials: true,
+  };
+}
 
 const ConnectionDialog: React.FC<ConnectionDialogProps> = ({ visible, onClose, onSave }) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [form] = Form.useForm();
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<'success' | 'error' | null>(null);
+  const [testMessage, setTestMessage] = useState<string>('');
+  const { createConnection, testConnection } = useConnections();
 
   const handleNext = async () => {
     try {
@@ -65,14 +91,21 @@ const ConnectionDialog: React.FC<ConnectionDialogProps> = ({ visible, onClose, o
     try {
       await form.validateFields(['host', 'port', 'username', 'password']);
       setTesting(true);
+      setTestResult(null);
 
-      // 模拟测试连接
-      setTimeout(() => {
-        setTesting(false);
+      const values = form.getFieldsValue();
+      const result = await testConnection(toApiConfig(values));
+
+      setTesting(false);
+      if (result.success) {
         setTestResult('success');
-        message.success('连接成功！');
-      }, 1500);
+        setTestMessage(result.message || '');
+      } else {
+        setTestResult('error');
+        setTestMessage(result.message || '连接失败');
+      }
     } catch (error) {
+      setTesting(false);
       message.error('请填写完整的连接信息');
     }
   };
@@ -80,11 +113,11 @@ const ConnectionDialog: React.FC<ConnectionDialogProps> = ({ visible, onClose, o
   const handleSave = async () => {
     try {
       const values = await form.validateFields();
+      const newConnection = await createConnection(toApiConfig(values));
       onSave(values);
-      message.success('连接已保存');
       handleClose();
     } catch (error) {
-      message.error('请完成所有步骤');
+      // 错误已在 hook 中处理
     }
   };
 
@@ -92,6 +125,7 @@ const ConnectionDialog: React.FC<ConnectionDialogProps> = ({ visible, onClose, o
     form.resetFields();
     setCurrentStep(0);
     setTestResult(null);
+    setTestMessage('');
     onClose();
   };
 
@@ -103,11 +137,15 @@ const ConnectionDialog: React.FC<ConnectionDialogProps> = ({ visible, onClose, o
       width={700}
       footer={null}
     >
-      <Steps current={currentStep} style={{ marginBottom: 32 }}>
-        <Step title="选择类型" icon={<Database size={20} />} />
-        <Step title="配置连接" icon={<Server size={20} />} />
-        <Step title="测试连接" icon={<CheckCircle size={20} />} />
-      </Steps>
+      <Steps
+        current={currentStep}
+        style={{ marginBottom: 32 }}
+        items={[
+          { title: '选择类型', icon: <Database size={20} /> },
+          { title: '配置连接', icon: <Server size={20} /> },
+          { title: '测试连接', icon: <CheckCircle size={20} /> },
+        ]}
+      />
 
       <Form
         form={form}
@@ -220,7 +258,8 @@ const ConnectionDialog: React.FC<ConnectionDialogProps> = ({ visible, onClose, o
                 <p style={{ marginTop: 16, color: '#52c41a', fontSize: 16, fontWeight: 500 }}>
                   连接成功！
                 </p>
-                <p style={{ color: '#999' }}>可以保存此连接了</p>
+                {testMessage && <p style={{ color: '#999' }}>{testMessage}</p>}
+                {!testMessage && <p style={{ color: '#999' }}>可以保存此连接了</p>}
               </div>
             )}
 
@@ -230,7 +269,9 @@ const ConnectionDialog: React.FC<ConnectionDialogProps> = ({ visible, onClose, o
                 <p style={{ marginTop: 16, color: '#ff4d4f', fontSize: 16, fontWeight: 500 }}>
                   连接失败
                 </p>
-                <p style={{ color: '#999' }}>请检查配置信息后重试</p>
+                <p style={{ color: '#999', maxWidth: 400, margin: '8px auto' }}>
+                  {testMessage || '请检查配置信息后重试'}
+                </p>
               </div>
             )}
 
@@ -240,7 +281,7 @@ const ConnectionDialog: React.FC<ConnectionDialogProps> = ({ visible, onClose, o
               onClick={handleTestConnection}
               style={{ marginTop: 24 }}
             >
-              {testing ? '测试中...' : '测试连接'}
+              {testing ? '测试中...' : testResult === 'error' ? '重新测试' : '测试连接'}
             </Button>
           </div>
         )}

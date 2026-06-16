@@ -1,46 +1,98 @@
-// 数据表格组件 - 基于 AG Grid，Navicat 风格配色
-import React, { useMemo } from 'react';
+// 数据表格组件 - 基于 AG Grid，Navicat 风格配色（真实数据）
+import React, { useState, useEffect, useCallback } from 'react';
 import { AgGridReact } from 'ag-grid-react';
+import { Button, Empty, Spin, message } from 'antd';
+import { RefreshCw } from 'lucide-react';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
 import './DataGrid.css';
+import { useSQL } from '../hooks/useSQL';
+import { useConnectionStore } from '../store/useConnectionStore';
 
 interface DataGridProps {
   tableName?: string;
+  connectionId?: string;
+  schema?: string;
 }
 
-const DataGrid: React.FC<DataGridProps> = ({ tableName = 'users' }) => {
-  // 模拟数据
-  const columnDefs = useMemo(() => [
-    { field: 'id', headerName: 'ID', width: 80, sortable: true, filter: true },
-    { field: 'name', headerName: '姓名', width: 150, sortable: true, filter: true },
-    { field: 'email', headerName: '邮箱', width: 200, sortable: true, filter: true },
-    { field: 'age', headerName: '年龄', width: 100, sortable: true, filter: true },
-    { field: 'city', headerName: '城市', width: 120, sortable: true, filter: true },
-    { field: 'created_at', headerName: '创建时间', width: 180, sortable: true, filter: true },
-    {
-      field: 'status',
-      headerName: '状态',
-      width: 100,
+const PAGE_SIZE = 100;
+
+const DataGrid: React.FC<DataGridProps> = ({ tableName, connectionId, schema }) => {
+  const { getTableData } = useSQL();
+  const { currentConnection } = useConnectionStore();
+  const [columnDefs, setColumnDefs] = useState<any[]>([]);
+  const [rowData, setRowData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [rowCount, setRowCount] = useState(0);
+
+  /**
+   * 将 SQL 结果集转换为 AG Grid 格式
+   */
+  const transformResult = useCallback((columns: Array<{ name: string }>, rows: any[][]) => {
+    // 构建列定义
+    const colDefs = columns.map((col) => ({
+      field: col.name,
+      headerName: col.name,
+      sortable: true,
+      filter: true,
+      resizable: true,
       cellRenderer: (params: any) => {
-        if (params.value === null) {
+        if (params.value === null || params.value === undefined) {
           return <span style={{ color: '#999', fontStyle: 'italic' }}>[NULL]</span>;
         }
-        return params.value;
+        return String(params.value);
       },
-    },
-  ], []);
+    }));
 
-  const rowData = useMemo(() => [
-    { id: 1, name: '张三', email: 'zhangsan@example.com', age: 28, city: '北京', created_at: '2024-01-15 10:30:00', status: 'active' },
-    { id: 2, name: '李四', email: 'lisi@example.com', age: 32, city: '上海', created_at: '2024-02-20 14:20:00', status: 'active' },
-    { id: 3, name: '王五', email: 'wangwu@example.com', age: null, city: '广州', created_at: '2024-03-10 09:15:00', status: null },
-    { id: 4, name: '赵六', email: 'zhaoliu@example.com', age: 45, city: '深圳', created_at: '2024-04-05 16:45:00', status: 'active' },
-    { id: 5, name: '孙七', email: 'sunqi@example.com', age: 29, city: '杭州', created_at: '2024-05-12 11:00:00', status: 'inactive' },
-    { id: 6, name: '周八', email: 'zhouba@example.com', age: 35, city: '成都', created_at: '2024-06-08 13:30:00', status: 'active' },
-    { id: 7, name: '吴九', email: 'wujiu@example.com', age: 26, city: '武汉', created_at: '2024-07-20 15:10:00', status: null },
-    { id: 8, name: '郑十', email: 'zhengshi@example.com', age: 38, city: '西安', created_at: '2024-08-15 10:50:00', status: 'active' },
-  ], []);
+    // 构建行数据（数组 → 对象）
+    const rowObjects = rows.map((row) => {
+      const obj: Record<string, any> = {};
+      columns.forEach((col, idx) => {
+        obj[col.name] = row[idx];
+      });
+      return obj;
+    });
+
+    return { colDefs, rowObjects };
+  }, []);
+
+  /**
+   * 加载表数据
+   */
+  const loadData = useCallback(async () => {
+    if (!tableName || !currentConnection) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await getTableData(undefined, schema || 'public', tableName, 0, PAGE_SIZE);
+      if (result) {
+        const { colDefs, rowObjects } = transformResult(result.columns, result.rows);
+        setColumnDefs(colDefs);
+        setRowData(rowObjects);
+        setRowCount(result.rowCount);
+      }
+    } catch (err) {
+      // 错误已在 hook 中处理
+    } finally {
+      setLoading(false);
+    }
+  }, [tableName, currentConnection, schema, getTableData, transformResult]);
+
+  // 表名或连接变化时加载数据
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // 没有选择连接时的空状态
+  if (!currentConnection) {
+    return (
+      <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Empty description="请先选择一个数据库连接" />
+      </div>
+    );
+  }
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -56,13 +108,35 @@ const DataGrid: React.FC<DataGridProps> = ({ tableName = 'users' }) => {
         <div>
           <strong style={{ fontSize: 14 }}>表: {tableName}</strong>
           <span style={{ marginLeft: 16, color: '#999', fontSize: 13 }}>
-            共 {rowData.length} 行
+            共 {rowCount} 行{rowCount >= PAGE_SIZE ? `（显示前 ${PAGE_SIZE} 行）` : ''}
           </span>
         </div>
+        <Button
+          type="text"
+          size="small"
+          icon={<RefreshCw size={14} />}
+          onClick={loadData}
+          loading={loading}
+        >
+          刷新
+        </Button>
       </div>
 
       {/* AG Grid 数据表格 */}
-      <div className="ag-theme-navicat" style={{ flex: 1 }}>
+      <div className="ag-theme-navicat" style={{ flex: 1, position: 'relative' }}>
+        {loading && (
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(255,255,255,0.6)',
+            zIndex: 10,
+          }}>
+            <Spin tip="加载中..." />
+          </div>
+        )}
         <AgGridReact
           columnDefs={columnDefs}
           rowData={rowData}
@@ -75,6 +149,7 @@ const DataGrid: React.FC<DataGridProps> = ({ tableName = 'users' }) => {
           animateRows={true}
           pagination={true}
           paginationPageSize={20}
+          overlayNoRowsTemplate="<span style='color:#999'>暂无数据</span>"
         />
       </div>
     </div>

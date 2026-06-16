@@ -23,6 +23,7 @@ import TableProperties from './components/TableProperties';
 import ExportDialog from './components/ExportDialog';
 import QueryHistoryPanel from './components/QueryHistoryPanel';
 import DatabaseInfoPanel from './components/DatabaseInfoPanel';
+import { useConnectionStore } from './store/useConnectionStore';
 import './App.css';
 
 const { Header, Sider, Content } = Layout;
@@ -36,6 +37,7 @@ interface TabItem {
   type: TabType;
   tableName?: string;
   databaseName?: string;
+  connectionId?: string;
 }
 
 function App() {
@@ -48,6 +50,9 @@ function App() {
   const [queryHistoryVisible, setQueryHistoryVisible] = useState(false);
   const [selectedTable, setSelectedTable] = useState<string | undefined>(undefined);
   const [currentDatabase, setCurrentDatabase] = useState('sakila');
+
+  // 使用 Zustand 状态管理
+  const { currentConnection } = useConnectionStore();
 
   const handleNewConnection = () => {
     setConnectionDialogVisible(true);
@@ -86,10 +91,10 @@ function App() {
     }
   };
 
-  const handleSelectTable = (tableName: string) => {
+  const handleSelectTable = (tableName: string, connectionId: string) => {
     setSelectedTable(tableName);
 
-    const existingTab = tabs.find(t => t.type === 'table' && t.tableName === tableName);
+    const existingTab = tabs.find(t => t.type === 'table' && t.tableName === tableName && t.connectionId === connectionId);
     if (existingTab) {
       setActiveKey(existingTab.key);
     } else {
@@ -99,6 +104,7 @@ function App() {
         title: tableName,
         type: 'table',
         tableName,
+        connectionId,
       };
       setTabs([...tabs, newTab]);
       setActiveKey(newKey);
@@ -129,8 +135,9 @@ function App() {
   };
 
   const handleExecuteSQL = (sql: string) => {
+    // SQL 执行已由 SQLEditor 组件内部通过 useSQL hook 处理
+    // 此回调用于查询历史面板的"重新执行"功能
     console.log('执行 SQL:', sql);
-    // TODO: 调用后端执行
   };
 
   const handleExport = (config: any) => {
@@ -141,7 +148,7 @@ function App() {
   const renderTabContent = (tab: TabItem) => {
     switch (tab.type) {
       case 'table':
-        return <DataGrid tableName={tab.tableName} />;
+        return <DataGrid tableName={tab.tableName} connectionId={tab.connectionId} schema={tab.databaseName} />;
       case 'sql':
         return <SQLEditor onExecute={handleExecuteSQL} />;
       case 'dbinfo':
@@ -272,7 +279,7 @@ function App() {
       <Layout>
         {/* 左侧导航树 */}
         <Sider width="20%" style={{ background: '#fafafa' }}>
-          <NavigatorTree onSelectTable={handleSelectTable} />
+          <NavigatorTree onSelectTable={handleSelectTable} onNewConnection={handleNewConnection} />
         </Sider>
 
         {/* 中央工作区 - 多 Tab */}

@@ -37,8 +37,12 @@
     "ag-grid-react": "^35.3.1",
     "antd": "^6.4.4",
     "date-fns": "^4.4.0",
+    "graphql": "^16.14.2",
+    "graphql-request": "^7.4.0",
     "lucide-react": "^1.18.0",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "sql-formatter": "^15.8.1",
+    "zustand": "^5.0.14"
   }
 }

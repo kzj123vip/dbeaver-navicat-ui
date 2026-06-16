@@ -1,22 +1,12 @@
-// 查询历史面板 - 记录执行过的 SQL
+// 查询历史面板 - 记录执行过的 SQL（持久化存储）
 import React, { useState } from 'react';
-import { List, Button, Tag, Space, Tooltip, Input, Empty } from 'antd';
+import { List, Button, Tag, Space, Tooltip, Input, Empty, Popconfirm } from 'antd';
 import { History, Clock, CheckCircle, XCircle, Copy, Play, Trash2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
+import { useQueryHistoryStore } from '../store/useQueryHistoryStore';
 
 const { Search } = Input;
-
-interface QueryHistoryItem {
-  id: string;
-  sql: string;
-  timestamp: Date;
-  duration: number; // 毫秒
-  status: 'success' | 'error';
-  rowsAffected?: number;
-  error?: string;
-  database?: string;
-}
 
 interface QueryHistoryPanelProps {
   onExecuteSQL?: (sql: string) => void;
@@ -24,56 +14,9 @@ interface QueryHistoryPanelProps {
 
 const QueryHistoryPanel: React.FC<QueryHistoryPanelProps> = ({ onExecuteSQL }) => {
   const [searchText, setSearchText] = useState('');
+  const { history, removeHistory, clearHistory } = useQueryHistoryStore();
 
-  // 模拟查询历史数据
-  const [historyData] = useState<QueryHistoryItem[]>([
-    {
-      id: '1',
-      sql: 'SELECT * FROM users WHERE age > 18 ORDER BY created_at DESC LIMIT 100;',
-      timestamp: new Date(Date.now() - 5 * 60 * 1000), // 5分钟前
-      duration: 125,
-      status: 'success',
-      rowsAffected: 87,
-      database: 'sakila',
-    },
-    {
-      id: '2',
-      sql: 'UPDATE users SET status = "active" WHERE last_login > DATE_SUB(NOW(), INTERVAL 30 DAY);',
-      timestamp: new Date(Date.now() - 15 * 60 * 1000), // 15分钟前
-      duration: 2340,
-      status: 'success',
-      rowsAffected: 234,
-      database: 'sakila',
-    },
-    {
-      id: '3',
-      sql: 'SELECT u.name, COUNT(o.id) as order_count FROM users u LEFT JOIN orders o ON u.id = o.user_id GROUP BY u.id;',
-      timestamp: new Date(Date.now() - 30 * 60 * 1000), // 30分钟前
-      duration: 456,
-      status: 'success',
-      rowsAffected: 152,
-      database: 'sakila',
-    },
-    {
-      id: '4',
-      sql: 'DELETE FROM temp_logs WHERE created_at < DATE_SUB(NOW(), INTERVAL 7 DAY);',
-      timestamp: new Date(Date.now() - 60 * 60 * 1000), // 1小时前
-      duration: 89,
-      status: 'error',
-      error: 'Table \'temp_logs\' doesn\'t exist',
-      database: 'test_db',
-    },
-    {
-      id: '5',
-      sql: 'CREATE INDEX idx_email ON users(email);',
-      timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2小时前
-      duration: 3245,
-      status: 'success',
-      database: 'sakila',
-    },
-  ]);
-
-  const filteredData = historyData.filter(item =>
+  const filteredData = history.filter(item =>
     item.sql.toLowerCase().includes(searchText.toLowerCase()) ||
     item.database?.toLowerCase().includes(searchText.toLowerCase())
   );
@@ -91,9 +34,9 @@ const QueryHistoryPanel: React.FC<QueryHistoryPanelProps> = ({ onExecuteSQL }) =
     return `${(ms / 1000).toFixed(2)}s`;
   };
 
-  const getRelativeTime = (date: Date) => {
+  const getRelativeTime = (timestamp: number) => {
     try {
-      return formatDistanceToNow(date, { addSuffix: true, locale: zhCN });
+      return formatDistanceToNow(new Date(timestamp), { addSuffix: true, locale: zhCN });
     } catch {
       return '刚刚';
     }
@@ -109,7 +52,19 @@ const QueryHistoryPanel: React.FC<QueryHistoryPanelProps> = ({ onExecuteSQL }) =
               <History size={20} color="#1890ff" />
               <span style={{ fontSize: 16, fontWeight: 500 }}>查询历史</span>
             </Space>
-            <Tag color="blue">{historyData.length} 条</Tag>
+            <Space>
+              <Tag color="blue">{history.length} 条</Tag>
+              {history.length > 0 && (
+                <Popconfirm
+                  title="清空所有历史记录？"
+                  onConfirm={clearHistory}
+                  okText="确定"
+                  cancelText="取消"
+                >
+                  <Button type="text" size="small" danger icon={<Trash2 size={14} />} />
+                </Popconfirm>
+              )}
+            </Space>
           </div>
           <Search
             placeholder="搜索 SQL 或数据库..."
@@ -124,7 +79,7 @@ const QueryHistoryPanel: React.FC<QueryHistoryPanelProps> = ({ onExecuteSQL }) =
       <div style={{ flex: 1, overflow: 'auto' }}>
         {filteredData.length === 0 ? (
           <Empty
-            description="暂无查询历史"
+            description={history.length === 0 ? '暂无查询历史' : '无匹配结果'}
             style={{ marginTop: 48 }}
           />
         ) : (
@@ -159,6 +114,7 @@ const QueryHistoryPanel: React.FC<QueryHistoryPanelProps> = ({ onExecuteSQL }) =
                       size="small"
                       danger
                       icon={<Trash2 size={14} />}
+                      onClick={() => removeHistory(item.id)}
                     />
                   </Tooltip>,
                 ]}
