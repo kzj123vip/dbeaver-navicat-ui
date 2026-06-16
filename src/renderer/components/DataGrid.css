@@ -1,0 +1,61 @@
+/* AG Grid Navicat 风格配色 */
+
+.ag-theme-navicat {
+  --ag-background-color: #ffffff;
+  --ag-foreground-color: #333333;
+  --ag-border-color: #e5e5e5;
+
+  /* 表头样式 - Navicat 浅蓝灰 */
+  --ag-header-background-color: #f5f7fa;
+  --ag-header-foreground-color: #333333;
+  --ag-header-cell-hover-background-color: #ebeef2;
+
+  /* 行样式 - 纯白无斑马纹 */
+  --ag-row-background-color: #ffffff;
+  --ag-odd-row-background-color: #ffffff;
+  --ag-row-hover-color: #f5f7fa;
+
+  /* 选中样式 */
+  --ag-selected-row-background-color: #e3f2fd;
+  --ag-range-selection-background-color: #e3f2fd;
+
+  /* 网格线 */
+  --ag-cell-horizontal-border: solid #e5e5e5;
+  --ag-row-border-color: #e5e5e5;
+
+  /* 字体 */
+  --ag-font-size: 13px;
+  --ag-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+}
+
+.ag-theme-navicat .ag-header-cell {
+  font-weight: 600;
+  border-right: 1px solid #e5e5e5;
+}
+
+.ag-theme-navicat .ag-cell {
+  border-right: 1px solid #e5e5e5;
+  line-height: 32px;
+}
+
+/* NULL 值样式 */
+.ag-theme-navicat .ag-cell [style*="color: rgb(153, 153, 153)"] {
+  color: #999999 !important;
+  font-style: italic;
+}
+
+/* 排序图标 */
+.ag-theme-navicat .ag-icon {
+  color: #2196f3;
+}
+
+/* 分页器样式 */
+.ag-theme-navicat .ag-paging-panel {
+  border-top: 1px solid #e5e5e5;
+  background-color: #fafafa;
+  color: #666;
+}
+
+.ag-theme-navicat .ag-paging-button {
+  color: #2196f3;
+}
