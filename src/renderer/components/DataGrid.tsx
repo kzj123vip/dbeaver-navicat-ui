@@ -2,13 +2,14 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import { Button, Empty, Spin, message, Modal, Space, Dropdown } from 'antd';
-import { RefreshCw, Save, Plus, Trash2, RotateCcw, MoreVertical, Columns } from 'lucide-react';
+import { RefreshCw, Save, Plus, Trash2, RotateCcw, MoreVertical, Columns, Key } from 'lucide-react';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
 import './DataGrid.css';
 import { useSQL } from '../hooks/useSQL';
 import { useConnectionStore } from '../store/useConnectionStore';
 import AddColumnDialog, { type ColumnDefinition } from './AddColumnDialog';
+import CreateIndexDialog, { type IndexDefinition } from './CreateIndexDialog';
 
 interface DataGridProps {
   tableName?: string;
@@ -30,6 +31,7 @@ const DataGrid: React.FC<DataGridProps> = ({ tableName, connectionId, schema }) 
   const [hasChanges, setHasChanges] = useState(false);
   const [primaryKey, setPrimaryKey] = useState<string>('id'); // 主键列名
   const [addColumnVisible, setAddColumnVisible] = useState(false);
+  const [createIndexVisible, setCreateIndexVisible] = useState(false);
 
   /**
    * 将 SQL 结果集转换为 AG Grid 格式
@@ -278,6 +280,34 @@ const DataGrid: React.FC<DataGridProps> = ({ tableName, connectionId, schema }) 
     }
   }, [tableName, executeSQL, loadData]);
 
+  /**
+   * 创建索引
+   */
+  const handleCreateIndex = useCallback(async (index: IndexDefinition) => {
+    if (!tableName) return;
+
+    setLoading(true);
+    try {
+      // 生成 CREATE INDEX SQL
+      let sql = '';
+      if (index.type === 'UNIQUE') {
+        sql = `CREATE UNIQUE INDEX ${index.name} ON ${tableName} (${index.columns.join(', ')});`;
+      } else if (index.type === 'FULLTEXT') {
+        sql = `CREATE FULLTEXT INDEX ${index.name} ON ${tableName} (${index.columns.join(', ')});`;
+      } else {
+        sql = `CREATE INDEX ${index.name} ON ${tableName} (${index.columns.join(', ')});`;
+      }
+
+      await executeSQL(sql);
+      message.success(`索引 "${index.name}" 已创建`);
+    } catch (err: any) {
+      message.error(`创建索引失败: ${err.message}`);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [tableName, executeSQL]);
+
   // 没有选择连接时的空状态
   if (!currentConnection) {
     return (
@@ -352,6 +382,12 @@ const DataGrid: React.FC<DataGridProps> = ({ tableName, connectionId, schema }) 
                   icon: <Columns size={14} />,
                   onClick: () => setAddColumnVisible(true),
                 },
+                {
+                  key: 'createIndex',
+                  label: '创建索引',
+                  icon: <Key size={14} />,
+                  onClick: () => setCreateIndexVisible(true),
+                },
               ],
             }}
           >
@@ -413,6 +449,15 @@ const DataGrid: React.FC<DataGridProps> = ({ tableName, connectionId, schema }) 
         tableName={tableName || ''}
         onClose={() => setAddColumnVisible(false)}
         onAdd={handleAddColumn}
+      />
+
+      {/* 创建索引对话框 */}
+      <CreateIndexDialog
+        visible={createIndexVisible}
+        tableName={tableName || ''}
+        columns={columnDefs.map((col) => col.field)}
+        onClose={() => setCreateIndexVisible(false)}
+        onCreate={handleCreateIndex}
       />
     </div>
   );
