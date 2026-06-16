@@ -23,13 +23,14 @@ import TableProperties from './components/TableProperties';
 import ExportDialog from './components/ExportDialog';
 import QueryHistoryPanel from './components/QueryHistoryPanel';
 import DatabaseInfoPanel from './components/DatabaseInfoPanel';
+import ProcedureEditor from './components/ProcedureEditor';
 import { useConnectionStore } from './store/useConnectionStore';
 import './App.css';
 
 const { Header, Sider, Content } = Layout;
 const { Title } = Typography;
 
-type TabType = 'welcome' | 'table' | 'sql' | 'dbinfo';
+type TabType = 'welcome' | 'table' | 'sql' | 'dbinfo' | 'procedure';
 
 interface TabItem {
   key: string;
@@ -85,6 +86,22 @@ function App() {
         title: '数据库信息',
         type: 'dbinfo',
         databaseName: currentDatabase,
+      };
+      setTabs([...tabs, newTab]);
+      setActiveKey(newKey);
+    }
+  };
+
+  const handleShowProcedures = () => {
+    const existingTab = tabs.find(t => t.type === 'procedure');
+    if (existingTab) {
+      setActiveKey(existingTab.key);
+    } else {
+      const newKey = 'procedure';
+      const newTab: TabItem = {
+        key: newKey,
+        title: '存储过程',
+        type: 'procedure',
       };
       setTabs([...tabs, newTab]);
       setActiveKey(newKey);
@@ -153,6 +170,8 @@ function App() {
         return <SQLEditor onExecute={handleExecuteSQL} />;
       case 'dbinfo':
         return <DatabaseInfoPanel databaseName={tab.databaseName} />;
+      case 'procedure':
+        return <ProcedureEditor />;
       default:
         return (
           <div style={{ textAlign: 'center', paddingTop: 100 }}>
@@ -227,6 +246,7 @@ function App() {
           <Button
             type="text"
             style={{ height: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center' }}
+            onClick={handleShowProcedures}
           >
             <FunctionSquare size={48} color="#FF9800" strokeWidth={1.5} />
             <span style={{ marginTop: 8, fontSize: 13 }}>函数</span>
