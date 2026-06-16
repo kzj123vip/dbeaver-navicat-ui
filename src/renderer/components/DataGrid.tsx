@@ -1,13 +1,14 @@
 // 数据表格组件 - 基于 AG Grid，Navicat 风格配色（真实数据 + 行内编辑）
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AgGridReact } from 'ag-grid-react';
-import { Button, Empty, Spin, message, Modal, Space } from 'antd';
-import { RefreshCw, Save, Plus, Trash2, RotateCcw } from 'lucide-react';
+import { Button, Empty, Spin, message, Modal, Space, Dropdown } from 'antd';
+import { RefreshCw, Save, Plus, Trash2, RotateCcw, MoreVertical, Columns } from 'lucide-react';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
 import './DataGrid.css';
 import { useSQL } from '../hooks/useSQL';
 import { useConnectionStore } from '../store/useConnectionStore';
+import AddColumnDialog, { type ColumnDefinition } from './AddColumnDialog';
 
 interface DataGridProps {
   tableName?: string;
@@ -28,6 +29,7 @@ const DataGrid: React.FC<DataGridProps> = ({ tableName, connectionId, schema }) 
   const [rowCount, setRowCount] = useState(0);
   const [hasChanges, setHasChanges] = useState(false);
   const [primaryKey, setPrimaryKey] = useState<string>('id'); // 主键列名
+  const [addColumnVisible, setAddColumnVisible] = useState(false);
 
   /**
    * 将 SQL 结果集转换为 AG Grid 格式
@@ -232,6 +234,50 @@ const DataGrid: React.FC<DataGridProps> = ({ tableName, connectionId, schema }) 
     }
   }, [tableName, rowData, originalData, hasChanges, primaryKey, executeSQL, loadData]);
 
+  /**
+   * 添加列
+   */
+  const handleAddColumn = useCallback(async (column: ColumnDefinition) => {
+    if (!tableName) return;
+
+    setLoading(true);
+    try {
+      // 生成 ALTER TABLE ADD COLUMN SQL
+      let sql = `ALTER TABLE ${tableName} ADD COLUMN ${column.name} ${column.type}`;
+
+      if (column.length) {
+        sql += `(${column.length})`;
+      }
+
+      if (!column.nullable) {
+        sql += ' NOT NULL';
+      }
+
+      if (column.autoIncrement) {
+        sql += ' AUTO_INCREMENT';
+      }
+
+      if (column.defaultValue) {
+        sql += ` DEFAULT ${column.defaultValue}`;
+      }
+
+      if (column.comment) {
+        sql += ` COMMENT '${column.comment.replace(/'/g, "''")}'`;
+      }
+
+      sql += ';';
+
+      await executeSQL(sql);
+      message.success(`列 "${column.name}" 已添加`);
+      await loadData(); // 重新加载数据以显示新列
+    } catch (err: any) {
+      message.error(`添加列失败: ${err.message}`);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [tableName, executeSQL, loadData]);
+
   // 没有选择连接时的空状态
   if (!currentConnection) {
     return (
@@ -297,6 +343,22 @@ const DataGrid: React.FC<DataGridProps> = ({ tableName, connectionId, schema }) 
           >
             删除
           </Button>
+          <Dropdown
+            menu={{
+              items: [
+                {
+                  key: 'addColumn',
+                  label: '添加列',
+                  icon: <Columns size={14} />,
+                  onClick: () => setAddColumnVisible(true),
+                },
+              ],
+            }}
+          >
+            <Button size="small" icon={<MoreVertical size={14} />}>
+              更多
+            </Button>
+          </Dropdown>
           <Button
             type="text"
             size="small"
@@ -344,6 +406,14 @@ const DataGrid: React.FC<DataGridProps> = ({ tableName, connectionId, schema }) 
           singleClickEdit={true}
         />
       </div>
+
+      {/* 添加列对话框 */}
+      <AddColumnDialog
+        visible={addColumnVisible}
+        tableName={tableName || ''}
+        onClose={() => setAddColumnVisible(false)}
+        onAdd={handleAddColumn}
+      />
     </div>
   );
 };
