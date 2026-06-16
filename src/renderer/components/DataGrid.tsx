@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import { Button, Empty, Spin, message, Modal, Space, Dropdown } from 'antd';
-import { RefreshCw, Save, Plus, Trash2, RotateCcw, MoreVertical, Columns, Key } from 'lucide-react';
+import { RefreshCw, Save, Plus, Trash2, RotateCcw, MoreVertical, Columns, Key, Link } from 'lucide-react';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
 import './DataGrid.css';
@@ -10,6 +10,8 @@ import { useSQL } from '../hooks/useSQL';
 import { useConnectionStore } from '../store/useConnectionStore';
 import AddColumnDialog, { type ColumnDefinition } from './AddColumnDialog';
 import CreateIndexDialog, { type IndexDefinition } from './CreateIndexDialog';
+import CreatePrimaryKeyDialog from './CreatePrimaryKeyDialog';
+import CreateForeignKeyDialog, { type ForeignKeyDefinition } from './CreateForeignKeyDialog';
 
 interface DataGridProps {
   tableName?: string;
@@ -32,6 +34,8 @@ const DataGrid: React.FC<DataGridProps> = ({ tableName, connectionId, schema }) 
   const [primaryKey, setPrimaryKey] = useState<string>('id'); // 主键列名
   const [addColumnVisible, setAddColumnVisible] = useState(false);
   const [createIndexVisible, setCreateIndexVisible] = useState(false);
+  const [createPrimaryKeyVisible, setCreatePrimaryKeyVisible] = useState(false);
+  const [createForeignKeyVisible, setCreateForeignKeyVisible] = useState(false);
 
   /**
    * 将 SQL 结果集转换为 AG Grid 格式
@@ -308,6 +312,44 @@ const DataGrid: React.FC<DataGridProps> = ({ tableName, connectionId, schema }) 
     }
   }, [tableName, executeSQL]);
 
+  /**
+   * 创建主键
+   */
+  const handleCreatePrimaryKey = useCallback(async (columns: string[]) => {
+    if (!tableName) return;
+
+    setLoading(true);
+    try {
+      const sql = `ALTER TABLE ${tableName} ADD PRIMARY KEY (${columns.join(', ')});`;
+      await executeSQL(sql);
+      message.success('主键已创建');
+    } catch (err: any) {
+      message.error(`创建主键失败: ${err.message}`);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [tableName, executeSQL]);
+
+  /**
+   * 创建外键
+   */
+  const handleCreateForeignKey = useCallback(async (fk: ForeignKeyDefinition) => {
+    if (!tableName) return;
+
+    setLoading(true);
+    try {
+      const sql = `ALTER TABLE ${tableName} ADD CONSTRAINT ${fk.name} FOREIGN KEY (${fk.column}) REFERENCES ${fk.refTable}(${fk.refColumn}) ON DELETE ${fk.onDelete} ON UPDATE ${fk.onUpdate};`;
+      await executeSQL(sql);
+      message.success(`外键 "${fk.name}" 已创建`);
+    } catch (err: any) {
+      message.error(`创建外键失败: ${err.message}`);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [tableName, executeSQL]);
+
   // 没有选择连接时的空状态
   if (!currentConnection) {
     return (
@@ -382,11 +424,24 @@ const DataGrid: React.FC<DataGridProps> = ({ tableName, connectionId, schema }) 
                   icon: <Columns size={14} />,
                   onClick: () => setAddColumnVisible(true),
                 },
+                { type: 'divider' },
                 {
                   key: 'createIndex',
                   label: '创建索引',
                   icon: <Key size={14} />,
                   onClick: () => setCreateIndexVisible(true),
+                },
+                {
+                  key: 'createPrimaryKey',
+                  label: '创建主键',
+                  icon: <Key size={14} />,
+                  onClick: () => setCreatePrimaryKeyVisible(true),
+                },
+                {
+                  key: 'createForeignKey',
+                  label: '创建外键',
+                  icon: <Link size={14} />,
+                  onClick: () => setCreateForeignKeyVisible(true),
                 },
               ],
             }}
@@ -458,6 +513,24 @@ const DataGrid: React.FC<DataGridProps> = ({ tableName, connectionId, schema }) 
         columns={columnDefs.map((col) => col.field)}
         onClose={() => setCreateIndexVisible(false)}
         onCreate={handleCreateIndex}
+      />
+
+      {/* 创建主键对话框 */}
+      <CreatePrimaryKeyDialog
+        visible={createPrimaryKeyVisible}
+        tableName={tableName || ''}
+        columns={columnDefs.map((col) => col.field)}
+        onClose={() => setCreatePrimaryKeyVisible(false)}
+        onCreate={handleCreatePrimaryKey}
+      />
+
+      {/* 创建外键对话框 */}
+      <CreateForeignKeyDialog
+        visible={createForeignKeyVisible}
+        tableName={tableName || ''}
+        columns={columnDefs.map((col) => col.field)}
+        onClose={() => setCreateForeignKeyVisible(false)}
+        onCreate={handleCreateForeignKey}
       />
     </div>
   );
