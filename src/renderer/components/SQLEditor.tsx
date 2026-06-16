@@ -1,5 +1,5 @@
 // SQL 编辑器组件 - 基于 Monaco Editor（真实 SQL 执行）
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Editor from '@monaco-editor/react';
 import { Button, Space, message, Spin, Empty } from 'antd';
 import { Play, Save, Download, Copy, Code } from 'lucide-react';
@@ -10,6 +10,7 @@ import 'ag-grid-community/styles/ag-theme-alpine.css';
 import '../components/DataGrid.css';
 import { useSQL } from '../hooks/useSQL';
 import { useConnectionStore } from '../store/useConnectionStore';
+import { MetadataService } from '../services/api';
 
 interface SQLEditorProps {
   initialValue?: string;
@@ -22,11 +23,14 @@ const SQLEditor: React.FC<SQLEditorProps> = ({
 }) => {
   const [sqlCode, setSqlCode] = useState(initialValue);
   const [editorInstance, setEditorInstance] = useState<any>(null);
+  const [monacoInstance, setMonacoInstance] = useState<any>(null);
   const [executing, setExecuting] = useState(false);
   const [resultColumns, setResultColumns] = useState<any[]>([]);
   const [resultRows, setResultRows] = useState<any[]>([]);
   const [executionTime, setExecutionTime] = useState<number>(0);
   const { executeSQL, currentConnection } = useSQL();
+  const [tables, setTables] = useState<string[]>([]);
+  const [tableColumns, setTableColumns] = useState<Map<string, string[]>>(new Map());
 
   const handleExecute = async () => {
     // 获取选中文本或全部代码
@@ -114,6 +118,117 @@ const SQLEditor: React.FC<SQLEditorProps> = ({
     }
   };
 
+  /**
+   * 加载数据库元数据（表名和列名）
+   */
+  useEffect(() => {
+    const loadMetadata = async () => {
+      if (!currentConnection) return;
+
+      try {
+        // 获取所有表
+        const allTables = await MetadataService.getTables(currentConnection.id, undefined, undefined);
+        const tableNames = allTables.map((t) => t.name);
+        setTables(tableNames);
+
+        // 获取每个表的列（限制前 20 个表避免过慢）
+        const columnsMap = new Map<string, string[]>();
+        const tablesToFetch = tableNames.slice(0, 20);
+
+        await Promise.all(
+          tablesToFetch.map(async (tableName) => {
+            try {
+              const columns = await MetadataService.getColumns(currentConnection.id, undefined, tableName);
+              columnsMap.set(tableName, columns.map((c) => c.name));
+            } catch {
+              // 忽略单个表的错误
+            }
+          })
+        );
+
+        setTableColumns(columnsMap);
+      } catch (err) {
+        console.error('加载元数据失败:', err);
+      }
+    };
+
+    loadMetadata();
+  }, [currentConnection]);
+
+  /**
+   * 注册 SQL 代码补全
+   */
+  useEffect(() => {
+    if (!monacoInstance || tables.length === 0) return;
+
+    // SQL 关键字
+    const sqlKeywords = [
+      'SELECT', 'FROM', 'WHERE', 'INSERT', 'INTO', 'UPDATE', 'DELETE', 'CREATE', 'TABLE',
+      'ALTER', 'DROP', 'INDEX', 'PRIMARY', 'KEY', 'FOREIGN', 'REFERENCES', 'CONSTRAINT',
+      'JOIN', 'LEFT', 'RIGHT', 'INNER', 'OUTER', 'ON', 'AS', 'AND', 'OR', 'NOT', 'NULL',
+      'IS', 'IN', 'BETWEEN', 'LIKE', 'ORDER', 'BY', 'GROUP', 'HAVING', 'LIMIT', 'OFFSET',
+      'DISTINCT', 'COUNT', 'SUM', 'AVG', 'MAX', 'MIN', 'UNION', 'EXCEPT', 'INTERSECT',
+      'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'EXISTS', 'ALL', 'ANY', 'SOME',
+    ];
+
+    // 注册补全提供器
+    const disposable = monacoInstance.languages.registerCompletionItemProvider('sql', {
+      provideCompletionItems: (model: any, position: any) => {
+        const word = model.getWordUntilPosition(position);
+        const range = {
+          startLineNumber: position.lineNumber,
+          endLineNumber: position.lineNumber,
+          startColumn: word.startColumn,
+          endColumn: word.endColumn,
+        };
+
+        const suggestions: any[] = [];
+
+        // SQL 关键字补全
+        sqlKeywords.forEach((keyword) => {
+          suggestions.push({
+            label: keyword,
+            kind: monacoInstance.languages.CompletionItemKind.Keyword,
+            insertText: keyword,
+            range,
+            detail: 'SQL 关键字',
+          });
+        });
+
+        // 表名补全
+        tables.forEach((table) => {
+          suggestions.push({
+            label: table,
+            kind: monacoInstance.languages.CompletionItemKind.Class,
+            insertText: table,
+            range,
+            detail: '表',
+          });
+        });
+
+        // 列名补全（从所有表的列中提取）
+        const allColumns = new Set<string>();
+        tableColumns.forEach((columns) => {
+          columns.forEach((col) => allColumns.add(col));
+        });
+
+        allColumns.forEach((column) => {
+          suggestions.push({
+            label: column,
+            kind: monacoInstance.languages.CompletionItemKind.Field,
+            insertText: column,
+            range,
+            detail: '列',
+          });
+        });
+
+        return { suggestions };
+      },
+    });
+
+    return () => disposable.dispose();
+  }, [monacoInstance, tables, tableColumns]);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* 工具栏 */}
@@ -170,8 +285,9 @@ const SQLEditor: React.FC<SQLEditorProps> = ({
             tabSize: 2,
           }}
           onMount={(editor, monaco) => {
-            // 保存编辑器实例
+            // 保存编辑器和 Monaco 实例
             setEditorInstance(editor);
+            setMonacoInstance(monaco);
 
             // 定义 Navicat 风格主题
             monaco.editor.defineTheme('navicat-light', {
