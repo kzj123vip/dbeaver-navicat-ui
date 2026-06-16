@@ -16,6 +16,8 @@ import {
 import NavigatorTree from './components/NavigatorTree';
 import SQLEditor from './components/SQLEditor';
 import DataGrid from './components/DataGrid';
+import ConnectionDialog from './components/ConnectionDialog';
+import TableProperties from './components/TableProperties';
 import './App.css';
 
 const { Header, Sider, Content } = Layout;
@@ -36,12 +38,16 @@ function App() {
     { key: 'welcome', title: '欢迎', type: 'welcome' }
   ]);
   const [activeKey, setActiveKey] = useState('welcome');
+  const [connectionDialogVisible, setConnectionDialogVisible] = useState(false);
+  const [selectedTable, setSelectedTable] = useState<string | undefined>(undefined);
 
   const handleNewConnection = () => {
-    console.log('新建连接');
-    window.api?.getDatabaseDrivers().then(drivers => {
-      console.log('数据库驱动：', drivers);
-    });
+    setConnectionDialogVisible(true);
+  };
+
+  const handleSaveConnection = (connection: any) => {
+    console.log('保存连接:', connection);
+    // TODO: 保存到后端
   };
 
   const handleNewQuery = () => {
@@ -56,6 +62,8 @@ function App() {
   };
 
   const handleSelectTable = (tableName: string) => {
+    setSelectedTable(tableName);
+
     const existingTab = tabs.find(t => t.type === 'table' && t.tableName === tableName);
     if (existingTab) {
       setActiveKey(existingTab.key);
@@ -74,6 +82,12 @@ function App() {
 
   const handleTabChange = (key: string) => {
     setActiveKey(key);
+    const tab = tabs.find(t => t.key === key);
+    if (tab?.type === 'table') {
+      setSelectedTable(tab.tableName);
+    } else {
+      setSelectedTable(undefined);
+    }
   };
 
   const handleTabEdit = (targetKey: any, action: 'add' | 'remove') => {
@@ -81,7 +95,10 @@ function App() {
       const newTabs = tabs.filter(t => t.key !== targetKey);
       setTabs(newTabs);
       if (activeKey === targetKey) {
-        setActiveKey(newTabs[newTabs.length - 1]?.key || 'welcome');
+        const newActiveKey = newTabs[newTabs.length - 1]?.key || 'welcome';
+        setActiveKey(newActiveKey);
+        const tab = newTabs.find(t => t.key === newActiveKey);
+        setSelectedTable(tab?.type === 'table' ? tab.tableName : undefined);
       }
     }
   };
@@ -235,11 +252,17 @@ function App() {
         </Content>
 
         {/* 右侧属性面板 */}
-        <Sider width="20%" style={{ background: '#fafafa', padding: 16 }}>
-          <Title level={5}>属性</Title>
-          <p style={{ color: '#999', fontSize: 13 }}>选择对象查看详情</p>
+        <Sider width="20%" style={{ background: '#fafafa', overflow: 'auto' }}>
+          <TableProperties tableName={selectedTable} />
         </Sider>
       </Layout>
+
+      {/* 连接对话框 */}
+      <ConnectionDialog
+        visible={connectionDialogVisible}
+        onClose={() => setConnectionDialogVisible(false)}
+        onSave={handleSaveConnection}
+      />
     </Layout>
   );
 }
